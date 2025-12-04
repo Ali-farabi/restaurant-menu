@@ -142,49 +142,86 @@ const texts = {
 
 const router = useRouter();
 
-const submitForm = () => {
+
+"әің"
+
+// ... (басқа рефтер мен функциялар)
+
+const submitForm = async () => {
   if (!tableNumber.value || !reserveName.value || !userName.value) {
     message.value = texts.fillFields[currentLang.value];
     return;
   }
 
+  // Төлем әдісін де қосуға болады, бірақ API-де ол қажет емес сияқты
+  const paymentMethod = payment.value; // Қажет болса, солай қалдыруға болады
+
   if (mode.value === "reserve") {
-    const data = {
-      table: tableNumber.value,
-      user: userName.value,
-      payment: payment.value
-    };
+    try {
+      // Брондау жасау (POST /sessions)
+      const response = await fetch('https://auth-service-g3by.onrender.com/sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          table_id: parseInt(tableNumber.value), // table_id integer болуы керек
+          user_name: reserveName.value,         // Бұл бірінші клиенттің аты
+          role: 'customer'                      // Рольді қажет болса қосуға болады
+        }),
+      });
 
-    localStorage.setItem(reserveName.value, JSON.stringify(data));
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-    message.value = texts.booked[currentLang.value];
+      const data = await response.json();
+      message.value = texts.booked[currentLang.value];
 
-    setTimeout(() => {
-      router.push("/menu");
-    }, 1000);
-
-  } else {
-    const saved = localStorage.getItem(reserveName.value);
-
-    if (!saved) {
-      message.value = "❌ Мұндай брондау жоқ!";
-      return;
-    }
-
-    const info = JSON.parse(saved);
-
-    if (info.table === tableNumber.value && info.user === userName.value) {
-      message.value = "✅ Столға сәтті қосылдыңыз!";
-
+      // Уақытша күту, сосын менюге ауысу
       setTimeout(() => {
         router.push("/menu");
       }, 1000);
 
-    } else {
-      message.value = "❌ Дұрыс ақпарат емес!";
-      return;
+    } catch (error) {
+      console.error('Брондау кезінде қате:', error);
+      message.value = "❌ Брондау кезінде қате пайда болды!";
+    }
+
+  } else {
+    // Қосылу режимі (GET /sessions/{user_id})
+    try {
+      const response = await fetch(`https://auth-service-g3by.onrender.com/sessions/${encodeURIComponent(reserveName.value)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        // Егер сессия табылмаса, 404 қатесі шығады
+        throw new Error(`Сессия табылмады. HTTP status: ${response.status}`);
+      }
+
+      const sessionData = await response.json();
+
+      // Сессияның table_id және user_name мәндерін тексеру
+      if (sessionData.table_id.toString() === tableNumber.value && sessionData.user_name === userName.value) {
+        message.value = "✅ Столға сәтті қосылдыңыз!";
+        setTimeout(() => {
+          router.push("/menu");
+        }, 1000);
+      } else {
+        message.value = "❌ Дұрыс ақпарат емес! Сессияның мәліметтері сәйкес келмейді.";
+      }
+
+    } catch (error) {
+      console.error('Қосылу кезінде қате:', error);
+      message.value = "❌ Сессия табылмады немесе қате пайда болды!";
     }
   }
+
+  // Форманы тазалау
   tableNumber.value = "";
   reserveName.value = "";
   userName.value = "";
